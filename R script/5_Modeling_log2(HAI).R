@@ -1,0 +1,298 @@
+#
+# 
+# HAI Modeling 
+# All analysis are in log2 scale
+#
+# Developed by Saeid Parvandeh 12/27/2016
+#
+#-----------------------------------------
+rm(list=ls())
+
+library(ggplot2)
+library(EnvStats)
+library(gridExtra)
+
+# read Baylor titers
+load("baylor_titers.RData")
+bay.d0 <- baylor_titers$Matched.Max.day0
+bay.d28 <- baylor_titers$Max.day28
+bay.age <- baylor_titers$Age
+bay.max.fc <- baylor_titers$MAX.FC
+bay.fc <- bay.max.fc
+# log2 scale
+bay.d0.log2 <- log2(bay.d0)
+bay.d28.log2 <- log2(bay.d28)
+bay.fc.log2 <- log2(bay.fc)
+
+# read Emory titers
+load("emory_titers.RData")
+emory.d0 <- emory_titers$Matched.Max.day0
+emory.d28 <- emory_titers$MAX.day28
+emory.age <- emory_titers$age_reported
+emory.max.fc <- emory_titers$MAX.FC
+emory.fc <- emory.max.fc
+# log2 scale
+emory.d0.log2 <- log2(emory.d0)
+emory.d28.log2 <- log2(emory.d28)
+emory.fc.log2 <- log2(emory.fc)
+
+# read Mayo titers
+load("mayo_titers.RData")
+mayo.d0 <- mayo_titers$day0
+mayo.d28 <- mayo_titers$day28
+mayo.age <- mayo_titers$age
+mayo.fc <- mayo.d28/mayo.d0
+# log2 scale
+mayo.d0.log2 <- log2(mayo.d0)
+mayo.d28.log2 <- log2(mayo.d28)
+mayo.fc.log2 <- log2(mayo.fc)
+
+# ----- fit baylor data -----
+bay.df <- data.frame(d0=bay.d0.log2,fc=bay.fc.log2)
+bay.logfit <- lm(fc~d0, data=bay.df) # need intercept
+bay.logfit.sum <- summary(bay.logfit)
+cat("R-squared")
+bay.logfit.sum$r.squared
+b1<-bay.logfit$coefficients[1]
+b2<-bay.logfit$coefficients[2]
+bay.logfitfn <- function(x) {b1*x^b2}
+bay.line <- bay.logfitfn(bay.d0.log2)
+
+plot(bay.d0.log2,bay.fc.log2, main="Baylor")
+points(bay.d0.log2,bay.line,col="red",pch="x",cex=1.5)
+legend(5,4.5,c("original data", "model"),pch=c("o","x"),col=c("black","red"))
+
+
+bay.age.log2 <- log2(bay.age)
+hist(bay.age.log2)
+bay.age.quants <- quantile(bay.age.log2)
+sum(bay.age.log2>bay.age.quants[4]) # median
+bay.d0.log2[bay.age.log2>bay.age.quants[4]]
+
+
+# effect of age: negative correlation with fc (and day28)
+# the older you are the lower your fold change
+cor(bay.age.log2,bay.fc.log2)
+plot(bay.age.log2,bay.fc.log2)
+abline(lm(bay.fc.log2~bay.age.log2))
+
+# effect of age: no correlation with d0
+cor(bay.age.log2,bay.d0.log2)
+plot(bay.age.log2,bay.d0.log2)
+abline(lm(bay.d0.log2~bay.age.log2))
+
+# boxplot of all day-0 titers - log2 scale
+par(mfrow = c(1, 2))
+boxplot(bay.d0.log2, bay.d28.log2, emory.d0.log2, emory.d28.log2, 
+                mayo.d0.log2, mayo.d28.log2,
+                main = "Range of D0 and D28 HAI titers", ylab = "HAI Fold Change",
+                names = c("Baylor-D0", "Baylor-D28", "Emory-D0", "Emory-D28", 
+                          "Mayo-D0", "Mayo-D28"), 
+                col = c("yellow", "yellow", "palevioletred1", "palevioletred1",  
+                        "royalblue2", "royalblue2"), 
+                cex.axis = .95, las=2, cex.main = 1.0, cex.lab = 1.5)
+
+boxplot(bay.fc.log2, emory.fc.log2, mayo.fc.log2,
+                main = "Range of Fold-Change HAI titers", ylab = "HAI Fold Change",
+                names = c("Baylor-FC", "Emory-FC", "Mayo-FC"), 
+                col = c("yellow", "palevioletred1", "royalblue2"), 
+                cex.axis = .95, las=2, cex.main = 1.0, cex.lab = 1.5)
+
+
+
+# ------ Train Baylor Data -------
+# we start with training Baylor and test on Baylor
+bay.log.predict<-predict(bay.logfit, newdata=data.frame(d0=bay.d0.log2), interval="confidence", level=.95, se.fit=T)
+
+bay.ci <- pointwise(bay.log.predict, coverage=0.95, individual=T) 
+
+bay.plot.df <- data.frame(d0=bay.d0.log2,fc=bay.fc.log2,yhat=bay.ci$fit[,1],
+                          lwr=bay.ci$fit[,2],
+                          upr=bay.ci$fit[,3]) 
+bay.plot.df$Age <- bay.age
+
+bay.logfit.sum <- summary(bay.logfit)
+bay.r2 <- bay.logfit.sum$r.squared
+bay.b1<-bay.logfit$coefficients[1]
+bay.b2<-bay.logfit$coefficients[2]   
+
+lb1 <- paste("R^2 ==", round(bay.r2,digits=2))
+eq <- bquote("fc = " ~ .(round(bay.b1,digits=2)) ~ day[0]^{.(round(bay.b2,digits=3))})
+lb2<- as.character(as.expression(eq)) 
+# Find the linear model coefficients
+lmc <- coef(lm(yhat ~ d0, data = bay.plot.df))
+# Create a function to produce the fitted line
+bay_fun_line <- function(x) lmc[1] + lmc[2] * x
+
+  
+g1 <- ggplot(bay.plot.df, aes(x=d0, y = fc)) +
+  geom_point(aes(colour = "Baylor Data"), size = 5, shape = 1) +
+  geom_line(aes(linetype = "Baylor Data"), alpha = 0) +
+  stat_function(fun = bay_fun_line,  aes(colour = "Baylor Model", linetype = "Baylor Model"), size = 1) +
+  xlab("log2(Day 0) HAI") +
+  ylab("log2(Day 28 / Day 0) HAI") +
+  ggtitle("Training: Baylor Data") +
+  annotate("text", x=5.0, y=4.7, hjust=0, label=lb1, parse=TRUE,size=5) +
+  annotate("text", x=5.0, y=5.0, hjust=0, label=lb2, parse=TRUE,size=5) +      
+  theme(axis.text.x = element_text(size = 20),
+        axis.title.x = element_text(size=20),
+        axis.text.y = element_text(size = 20),
+        axis.title.y = element_text(size = 20),
+        panel.background = element_rect(fill = 'white', colour = 'black'), #element_blank(),
+        panel.grid.major = element_line(colour = "gray"),
+        panel.grid.minor = element_line(colour = "gray"),
+        axis.text=element_text(size=20),
+        plot.title = element_text(size = 20, face = "bold"),
+        legend.text = element_text(size = 13),
+        legend.position = c(.77,.9)) +
+  scale_linetype_manual(values = c("blank", "dashed"), guide = FALSE) +
+  scale_colour_manual(name  ="HAI", values = c("black", "blue"),
+                      guide = guide_legend(override.aes = list(
+                        linetype = c("dashed", "blank"), size = c(1, 5))),
+                      labels = c("Baylor Model", "Baylor Data"),
+                      breaks = c("Baylor Model", "Baylor Data"))
+
+# ------- Test on Emory with different colors for each year -------
+emory.log.predict<-predict(bay.logfit, newdata=data.frame(d0=emory.d0.log2), interval="confidence", level=.95, se.fit=T)
+
+emory.ci <- pointwise(emory.log.predict, coverage=0.95, individual=T)
+
+emory.plot.df <- data.frame(d0=emory.d0.log2,fc=emory.fc.log2,yhat=emory.ci$fit[,1],
+                            lwr=emory.ci$fit[,2],
+                            upr=emory.ci$fit[,3]) 
+# Function for cbind data frames with different rows
+cbind.na<-function(df1, df2){
+  
+  #Collect all unique rownames
+  total.rownames<-union(x = rownames(x = df1),y = rownames(x=df2))
+  
+  #Create a new dataframe with rownames
+  df<-data.frame(row.names = total.rownames)
+  
+  #Get absent rownames for both of the dataframe
+  absent.names.1<-setdiff(x = rownames(df1),y = rownames(df))
+  absent.names.2<-setdiff(x = rownames(df2),y = rownames(df))
+  
+  #Fill absents with NAs
+  df1.fixed<-data.frame(row.names = absent.names.1,matrix(data = NA,nrow = length(absent.names.1),ncol=ncol(df1)))
+  colnames(df1.fixed)<-colnames(df1)
+  df1<-rbind(df1,df1.fixed)
+  
+  df2.fixed<-data.frame(row.names = absent.names.2,matrix(data = NA,nrow = length(absent.names.2),ncol=ncol(df2)))
+  colnames(df2.fixed)<-colnames(df2)
+  df2<-rbind(df2,df2.fixed)
+  
+  #Finally cbind into new dataframe
+  df<-cbind(df,df1[rownames(df),],df2[rownames(df),])
+  return(df)
+  
+}
+emory_2007.df <- data.frame(d01=emory.d0.log2[1:28], fc1=emory.fc.log2[1:28])
+emory_2009.df <- data.frame(d02=emory.d0.log2[29:86], fc2=emory.fc.log2[29:86])
+emory.prebind.df <- cbind.na(emory_2007.df, emory_2009.df)
+emory.plot.df_2 <- cbind.na(emory.prebind.df, emory.plot.df)
+
+legend.fit <- "Baylor Model"
+legend.dat1 <- "Emory Data 2007-2009"
+legend.dat2 <- "Emory Data 2009-2011"
+
+override.shape <- c(1, 2, 4)
+override.color <- c("purple","black","red")
+
+emory.logfit<-predict(bay.logfit, newdata=data.frame(d0=emory.d0.log2))
+emory.r2 <- summary(lm(emory.logfit~emory.fc.log2))$r.squared
+lb1 <- paste("R^2 ==", round(emory.r2,digits=2))
+
+# Find the linear model coefficients
+lmc <- coef(lm(yhat ~ d0, data = emory.plot.df_2))
+# Create a function to produce the fitted line
+emory_fun_line <- function(x) lmc[1] + lmc[2] * x
+
+g2 <- ggplot(emory.plot.df_2, aes(x = d0, y = fc)) +
+  geom_point(aes(x = d01, y = fc1, color="Emory Data 2007-2009"), shape = 4, size = 5, show.legend = F) +
+  # geom_line(aes(x = d01, y = fc1, linetype = "Emory Data 2007-2009"), alpha = 0) +
+  geom_point(aes(x = d02, y = fc2, color="Emory Data 2009-2011"), shape = 1, size = 5, show.legend = F) +
+  # geom_line(aes(x = d02, y = fc2, linetype = "Emory Data 2009-2011"), alpha = 0) +
+  stat_function(fun = emory_fun_line,  aes(colour = "Baylor Model", linetype = "Baylor Model"), size = 1) +
+  xlab("log2(Day 0) HAI") +
+  ylab("log2(Day 28 / Day 0) HAI") +
+  ggtitle("Testing: Emory Data") +
+  annotate("text", x=6.5, y=6.5, hjust=0, label=lb1, parse=TRUE,size=5) +
+  annotate("text", x=6.5, y=7.0, hjust=0, label=lb2, parse=TRUE,size=5) +      
+  theme(axis.text.x = element_text(size = 20),
+        axis.title.x = element_text(size=20),
+        axis.text.y = element_text(size = 20),
+        axis.title.y = element_text(size = 20),
+        panel.background = element_rect(fill = 'white', colour = 'black'), #element_blank(),
+        panel.grid.major = element_line(colour = "gray"),
+        panel.grid.minor = element_line(colour = "gray"),
+        axis.text=element_text(size=20),
+        plot.title = element_text(size = 20, face = "bold"),
+        legend.text = element_text(size = 13),
+        legend.position = c(.8,.9)) +
+  scale_linetype_manual(values = c("dashed", "blank", "blank"), guide = FALSE) +
+  scale_colour_manual(name  ="HAI", values = c("blue", "purple", "black"),
+                      guide = guide_legend(override.aes = list(
+                        linetype = c("dashed", "blank", "blank"), size = c(1, 5, 5))))
+
+# ------ Test on Mayo ------
+mayo.log.predict <- predict(bay.logfit, newdata = data.frame(d0=mayo.d0.log2), interval = "confidence", level = .95, se.fit = T)
+
+mayo.ci <- pointwise(mayo.log.predict, coverage = 0.95, individual = T) 
+
+mayo.plot.df <- data.frame(d0=mayo.d0.log2, fc=mayo.fc.log2, yhat=mayo.ci$fit[,1],
+                           lwr=mayo.ci$fit[, 2], 
+                           upr=mayo.ci$fit[, 3]) 
+
+mayo.logfit<-predict(bay.logfit, newdata=data.frame(d0=mayo.d0.log2)) 
+mayo.r2 <- summary(lm(mayo.logfit~mayo.fc.log2))$r.squared 
+lb1 <- paste("R^2 ==", round(mayo.r2,digits=2)) 
+
+# Find the linear model coefficients
+lmc <- coef(lm(yhat ~ d0, data = mayo.plot.df))
+# Create a function to produce the fitted line
+mayo_fun_line <- function(x) lmc[1] + lmc[2] * x
+
+
+g3 <- ggplot(mayo.plot.df, aes(x=d0, y = fc)) +
+  geom_point(aes(colour = "Mayo Data"), size = 5, shape = 1) +
+  geom_line(aes(linetype = "Mayo Data"), alpha = 0) +
+  stat_function(fun = mayo_fun_line,  aes(colour = "Baylor Model", linetype = "Baylor Model"), size = 1) +
+  xlab("log2(Day 0) HAI") +
+  ylab("log2(Day 28 / Day 0) HAI") +
+  ggtitle("Training: Mayo Data") +
+  annotate("text", x=8.0, y=3.7, hjust=0, label=lb1, parse=TRUE,size=5) +
+  annotate("text", x=8.0, y=4.0, hjust=0, label=lb2, parse=TRUE,size=5) +      
+  theme(axis.text.x = element_text(size = 20),
+        axis.title.x = element_text(size=20),
+        axis.text.y = element_text(size = 20),
+        axis.title.y = element_text(size = 20),
+        panel.background = element_rect(fill = 'white', colour = 'black'), #element_blank(),
+        panel.grid.major = element_line(colour = "gray"),
+        panel.grid.minor = element_line(colour = "gray"),
+        axis.text=element_text(size=20),
+        plot.title = element_text(size = 20, face = "bold"),
+        legend.text = element_text(size = 13),
+        legend.position = c(.77,.9)) +
+  scale_linetype_manual(values = c("dashed", "blank"), guide = FALSE) +
+  scale_colour_manual(name  ="HAI", values = c("blue", "black"),
+                      guide = guide_legend(override.aes = list(
+                        linetype = c("dashed", "blank"), size = c(1, 5))))
+
+
+
+# barplot of number of subjects
+barplot_data <- data.frame(Data = c("Baylor", "Emory_2007", "Emory_2009", "Mayo"),
+                           Subjects = c(length(bay.d0), dim(emory_2007.df)[1], dim(emory_2009.df)[1], 
+                                        length(mayo.d0)))
+
+g4 <- ggplot(barplot_data, aes(x=Data, y=Subjects)) +  geom_bar(stat="identity") +
+  ggtitle("Number of Subjects in Each Data") +
+  theme(axis.text.x = element_text(size = 18),
+        axis.title.x = element_text(size=18),
+        axis.text.y = element_text(size = 20),
+        axis.title.y = element_text(size = 20),
+        axis.text=element_text(size=20),
+        plot.title = element_text(size = 20, face = "bold"))
+
+grid.arrange(g1, g2, g3, g4, ncol = 2, nrow = 2)
