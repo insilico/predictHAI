@@ -107,12 +107,14 @@ while(any(condition=="-Inf") | cutpoints[2] >= max(bay.d0.log2) | cutpoints[2] <
 clust_cutpoints <- cutpoints
 clust_cutpoints
 
-plot(bay.emory.mayo.gmm_clust,which=2, axes=FALSE, main2 ="EM/GMM Clustering of All Day0 HAI Data", cex.main = 1, xlab2 ="Combined All log2(Day0) HAI",cex.lab = 1)
+plot(bay.emory.mayo.gmm_clust,which=2, axes=FALSE, main2 ="EM/GMM Clustering of All Day0 HAI Data", 
+     cex.main = 1, xlab2 ="Combined log2(Day0) HAI",cex.lab = 1)
 axis(side = 1, at = seq(0, 10, .5), cex.axis=1, las=2)
 axis(side = 2, cex.axis=1)
 abline(v=clust_cutpoints[1], col = "purple", lty = 2)
 abline(v=clust_cutpoints[2], col = "purple", lty = 2)
-legend(8,.2,c("Group-1","Group-2","Group-3","Clusters Boundary"), lty=c(1, 1, 1, 2), col=c("red","green","blue","purple"), cex=1, bty="n")
+legend(8,.2,c("Lower Baseline Titer Group","Intermediate Baseline Titer Group","Higher Baseline Titer Group","Cluster Boundaries"), 
+       lty=c(1, 1, 1, 2), col=c("red","green","blue","purple"), cex=1, bty="n")
 
 
 #### ---- Feature selection using nested CV based on highest interaction value from reGAIN ---- ####

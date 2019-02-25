@@ -260,7 +260,7 @@ g3 <- ggplot(mayo.plot.df, aes(x=d0, y = fc)) +
   stat_function(fun = mayo_fun_line,  aes(colour = "Baylor Model", linetype = "Baylor Model"), size = 1) +
   xlab("log2(Day 0) HAI") +
   ylab("log2(Day 28 / Day 0) HAI") +
-  ggtitle("Training: Mayo Data") +
+  ggtitle("Testing: Mayo Data") +
   annotate("text", x=8.0, y=3.7, hjust=0, label=lb1, parse=TRUE,size=5) +
   annotate("text", x=8.0, y=4.0, hjust=0, label=lb2, parse=TRUE,size=5) +      
   theme(axis.text.x = element_text(size = 20),
